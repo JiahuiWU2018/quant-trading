@@ -32,6 +32,7 @@ class BacktestResult:
 @dataclass
 class BacktestEngine:
     risk_manager: RiskManager
+    allow_short_selling: bool = False
 
     def run(self, market_data: list[dict], strategy: BaseStrategy, initial_cash: float) -> BacktestResult:
         portfolio = Portfolio(cash=initial_cash)
@@ -51,13 +52,21 @@ class BacktestEngine:
                     raise ValueError(f"Missing execution price for symbol: {order.symbol}")
 
                 if self.risk_manager.allows(order.symbol, order.quantity, fill_price, current_qty):
+                    projected_quantity = current_qty + order.quantity
+                    if not self.allow_short_selling and projected_quantity < 0:
+                        continue
+
+                    # Cash decreases when buying (positive quantity) and increases when selling (negative quantity).
                     projected_cash = portfolio.cash - order.quantity * fill_price
-                    if projected_cash < 0:
-                        equity_curve.append(portfolio.equity(prices))
+                    if order.quantity > 0 and projected_cash < 0:
                         continue
 
                     portfolio.cash = projected_cash
-                    portfolio.positions[order.symbol] = current_qty + order.quantity
+                    new_quantity = projected_quantity
+                    if new_quantity == 0:
+                        portfolio.positions.pop(order.symbol, None)
+                    else:
+                        portfolio.positions[order.symbol] = new_quantity
                     strategy.on_fill(order, fill_price)
 
             equity_curve.append(portfolio.equity(prices))

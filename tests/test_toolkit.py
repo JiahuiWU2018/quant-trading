@@ -66,6 +66,41 @@ class TestToolkit(unittest.TestCase):
         client = DemoIBClient()
         self.assertEqual(client.place_order(order), "accepted:MSFT:2")
 
+    def test_backtest_engine_cleans_zero_positions(self):
+        class BuyThenSellStrategy(BaseStrategy):
+            def on_bar(self, bar, portfolio):
+                current_quantity = portfolio.positions.get("AAPL", 0)
+                if current_quantity == 0:
+                    return self.market_order("AAPL", 1)
+                return self.market_order("AAPL", -1)
+
+        engine = BacktestEngine(risk_manager=RiskManager(max_position_size=5))
+        result = engine.run(
+            market_data=[
+                {"symbol": "AAPL", "close": 100.0},
+                {"symbol": "AAPL", "close": 101.0},
+            ],
+            strategy=BuyThenSellStrategy(),
+            initial_cash=1000.0,
+        )
+
+        self.assertNotIn("AAPL", result.portfolio.positions)
+
+    def test_backtest_engine_blocks_oversell_without_position(self):
+        class SellFirstStrategy(BaseStrategy):
+            def on_bar(self, bar, portfolio):
+                return self.market_order("AAPL", -1)
+
+        engine = BacktestEngine(risk_manager=RiskManager(max_position_size=5))
+        result = engine.run(
+            market_data=[{"symbol": "AAPL", "close": 100.0}],
+            strategy=SellFirstStrategy(),
+            initial_cash=1000.0,
+        )
+
+        self.assertEqual(result.portfolio.positions, {})
+        self.assertAlmostEqual(result.portfolio.cash, 1000.0)
+
 
 if __name__ == "__main__":
     unittest.main()
