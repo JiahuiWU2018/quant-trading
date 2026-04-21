@@ -12,7 +12,10 @@ class Portfolio:
     positions: dict[str, int] = field(default_factory=dict)
 
     def equity(self, prices: dict[str, float]) -> float:
-        position_value = sum(qty * prices.get(symbol, 0.0) for symbol, qty in self.positions.items())
+        missing_prices = [symbol for symbol in self.positions if symbol not in prices]
+        if missing_prices:
+            raise ValueError(f"Missing prices for symbols: {', '.join(sorted(missing_prices))}")
+        position_value = sum(qty * prices[symbol] for symbol, qty in self.positions.items())
         return self.cash + position_value
 
 
@@ -43,10 +46,19 @@ class BacktestEngine:
             order = strategy.on_bar(bar, portfolio)
             if order is not None:
                 current_qty = portfolio.positions.get(order.symbol, 0)
-                if self.risk_manager.allows(order.symbol, order.quantity, close, current_qty):
-                    portfolio.cash -= order.quantity * close
+                fill_price = prices.get(order.symbol)
+                if fill_price is None:
+                    raise ValueError(f"Missing execution price for symbol: {order.symbol}")
+
+                if self.risk_manager.allows(order.symbol, order.quantity, fill_price, current_qty):
+                    projected_cash = portfolio.cash - order.quantity * fill_price
+                    if projected_cash < 0:
+                        equity_curve.append(portfolio.equity(prices))
+                        continue
+
+                    portfolio.cash = projected_cash
                     portfolio.positions[order.symbol] = current_qty + order.quantity
-                    strategy.on_fill(order, close)
+                    strategy.on_fill(order, fill_price)
 
             equity_curve.append(portfolio.equity(prices))
 

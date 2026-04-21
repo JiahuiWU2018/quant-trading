@@ -16,7 +16,7 @@ class BaseStrategy(ABC):
         raise NotImplementedError
 
     def on_fill(self, order: Order, fill_price: float) -> None:
-        return None
+        pass
 
     @staticmethod
     def market_order(symbol: str, quantity: int) -> Order:

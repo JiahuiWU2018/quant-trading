@@ -42,6 +42,20 @@ class TestToolkit(unittest.TestCase):
         self.assertAlmostEqual(result.final_equity, 505.0)
         self.assertEqual(strategy.fills, [("AAPL", 100.0)])
 
+    def test_backtest_engine_rejects_order_without_cash(self):
+        strategy = BuyFirstBarStrategy()
+        engine = BacktestEngine(risk_manager=RiskManager(max_position_size=10))
+
+        result = engine.run(
+            market_data=[{"symbol": "AAPL", "close": 100.0}],
+            strategy=strategy,
+            initial_cash=50.0,
+        )
+
+        self.assertEqual(result.portfolio.positions, {})
+        self.assertAlmostEqual(result.portfolio.cash, 50.0)
+        self.assertEqual(strategy.fills, [])
+
     def test_ib_broker_is_extension_point(self):
         class DemoIBClient(IBBrokerClient):
             def place_order(self, order):
