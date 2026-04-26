@@ -1,0 +1,30 @@
+# ============================================================
+# quant-trading — development & test dependencies
+# ============================================================
+# Install:  pip install -r requirements.txt -r requirements-dev.txt
+# ============================================================
+
+# Pull in all runtime deps first
+-r requirements.txt
+
+# --- Testing ---
+pytest>=7.4
+pytest-cov>=4.1        # coverage reports
+pytest-mock>=3.12      # convenient mock fixtures
+
+# --- Code quality ---
+black>=24.0            # formatter
+isort>=5.13            # import sorting
+flake8>=7.0            # linter
+flake8-bugbear>=24.0   # opinionated extra lint rules
+
+# --- Git hooks ---
+pre-commit>=3.7
+
+# --- Notebooks (examples only; no secrets in committed output) ---
+jupyter>=1.0
+nbconvert>=7.0
+
+# --- Type checking (optional but recommended) ---
+mypy>=1.9
+pandas-stubs>=2.0

@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-trading"
+version = "0.1.0"
+description = "Generic quantitative trading infrastructure: backtesting, execution, and portfolio optimization."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "scipy>=1.11",
+    "pyarrow>=14.0",       # parquet cache
+    "yfinance>=0.2",
+]
+
+[project.optional-dependencies]
+backtest = [
+    "backtrader>=1.9",
+]
+optim = [
+    "cvxpy>=1.4",
+    "osqp>=0.6",
+    "ecos>=2.0",
+    "scs>=3.0",
+]
+ibkr = [
+    "ib_insync>=0.9",
+]
+mosek = [
+    "mosek>=10.0",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "black>=24.0",
+    "flake8>=7.0",
+    "isort>=5.13",
+    "pre-commit>=3.6",
+]
+all = [
+    "quant-trading[backtest,optim,ibkr,dev]",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
