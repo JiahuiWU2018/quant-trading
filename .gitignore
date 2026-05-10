@@ -59,6 +59,11 @@ dmypy.json
 # macOS
 .DS_Store
 
+# Generated notebook artefacts
+examples/notebooks/*.html
+tear_sheet.html
+*.html
+
 # Build / packaging
 *.so
 *.dylib
