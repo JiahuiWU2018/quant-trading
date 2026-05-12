@@ -1,6 +1,6 @@
-"""IBKR broker adapter — ib_insync-backed implementation.
+"""IBKR broker adapter — ib_async-backed implementation.
 
-Provides a synchronous API over ib_insync's internally-async client.
+Provides a synchronous API over ib_async's internally-async client.
 IBKRAdapter and IBKRConnector share a single IB() instance passed on
 construction to avoid exceeding IB's per-client-ID connection limit.
 
@@ -31,30 +31,30 @@ logger = logging.getLogger(__name__)
 
 
 def _build_ib_contract(symbol: str):
-    """Build a basic US equity contract for ib_insync.
+    """Build a basic US equity contract for ib_async.
 
     Args:
         symbol: Ticker symbol (e.g. "AAPL").
 
     Returns:
-        ib_insync.Stock contract.
+        ib_async.Stock contract.
     """
-    # Import here to keep ib_insync an optional import at module level
-    from ib_insync import Stock  # type: ignore[import]
+    # Import here to keep ib_async an optional import at module level
+    from ib_async import Stock  # type: ignore[import]
 
     return Stock(symbol, "SMART", "USD")
 
 
 def _build_ib_order(order: Order):
-    """Convert an internal Order to an ib_insync order object.
+    """Convert an internal Order to an ib_async order object.
 
     Args:
         order: Internal Order dataclass.
 
     Returns:
-        ib_insync MarketOrder, LimitOrder, StopOrder, or StopLimitOrder.
+        ib_async MarketOrder, LimitOrder, StopOrder, or StopLimitOrder.
     """
-    from ib_insync import LimitOrder, MarketOrder, StopLimitOrder, StopOrder  # type: ignore[import]
+    from ib_async import LimitOrder, MarketOrder, StopLimitOrder, StopOrder  # type: ignore[import]
 
     action = order.side.value  # "BUY" or "SELL"
     qty = order.quantity
@@ -72,17 +72,17 @@ def _build_ib_order(order: Order):
 
 
 class IBKRAdapter(BrokerAdapter):
-    """ib_insync-backed broker adapter for IB Gateway / TWS.
+    """ib_async-backed broker adapter for IB Gateway / TWS.
 
     Designed to be shared across multiple StrategyRunner instances.
     Thread-safe: a Lock guards IB API calls.
 
     Args:
-        ib: An ib_insync.IB() instance. If None, a new one is created.
+        ib: An ib_async.IB() instance. If None, a new one is created.
             Pass an existing instance to share a connection with IBKRConnector.
 
     Example:
-        from ib_insync import IB
+        from ib_async import IB
         ib = IB()
         adapter = IBKRAdapter(ib=ib)
         adapter.connect()
@@ -98,7 +98,7 @@ class IBKRAdapter(BrokerAdapter):
 
         # Accept a shared IB instance or create a new one
         if ib is None:
-            from ib_insync import IB  # type: ignore[import]
+            from ib_async import IB  # type: ignore[import]
             self._ib = IB()
         else:
             self._ib = ib
@@ -129,6 +129,11 @@ class IBKRAdapter(BrokerAdapter):
             return
         try:
             self._ib.connect(self._host, self._port, clientId=self._client_id)
+            # Paper accounts do not have live market data — request delayed-frozen
+            # (type 4) immediately after connecting so all subsequent market data
+            # requests succeed. Has no effect on order placement.
+            # 1=live, 2=frozen, 3=delayed, 4=delayed-frozen
+            self._ib.reqMarketDataType(4)
             self._connected = True
             logger.info(
                 "IBKRAdapter connected: host=%s port=%d client_id=%d",
@@ -220,7 +225,7 @@ class IBKRAdapter(BrokerAdapter):
             raise ValueError("Cannot cancel order without broker_order_id.")
         try:
             with self._lock:
-                # Retrieve the ib_insync Trade object by order ID
+                # Retrieve the ib_async Trade object by order ID
                 open_trades = self._ib.openTrades()
                 ib_trade = next(
                     (t for t in open_trades if str(t.order.orderId) == order.broker_order_id),

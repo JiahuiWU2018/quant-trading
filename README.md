@@ -126,6 +126,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, code style, branch naming,
 
 ---
 
+## Documentation
+
+| Doc | Purpose |
+|---|---|
+| [docs/paper_trading_setup.md](docs/paper_trading_setup.md) | IB Gateway setup, `.env` config, daily startup checklist, troubleshooting |
+
+---
+
 ## Roadmap
 
 - [x] Phase 1 — Data pipeline

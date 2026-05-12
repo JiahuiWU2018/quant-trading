@@ -2,7 +2,7 @@
 
 Public interface:
     BrokerAdapter   — ABC defining the broker contract
-    IBKRAdapter     — ib_insync-backed implementation (paper + live)
+    IBKRAdapter     — ib_async-backed implementation (paper + live)
     OrderManager    — order lifecycle, retry, rate limiting
     SafetyChecker   — pre-trade kill-switch and limit enforcement
     StrategyRunner  — polling execution loop (one per strategy)
