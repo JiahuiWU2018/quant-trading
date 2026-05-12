@@ -2,7 +2,7 @@
 
 Defines the contract that every broker adapter must implement.
 Concrete adapters (IBKRAdapter, SimulatedAdapter) live in separate modules.
-The private repository never imports ib_insync directly — it only imports
+The private repository never imports ib_async directly — it only imports
 from this ABC.
 """
 

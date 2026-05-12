@@ -5,6 +5,8 @@ Integration tests (requiring IB Gateway) live in tests/integration/.
 """
 
 import os
+import threading
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -423,3 +425,183 @@ class TestStrategyRunner:
         t.join(timeout=3)
         assert not t.is_alive()
         assert not runner.is_running
+
+
+# ---------------------------------------------------------------------------
+# IBKRConnector — _derive_duration (pure function, no IB connection needed)
+# ---------------------------------------------------------------------------
+
+class TestDeriveDuration:
+    """Tests for the _derive_duration helper in ibkr_connector."""
+
+    def _derive(self, days_back: int, freq: str = "1d") -> str:
+        from datetime import timezone
+        from quant_trading.data.apis.ibkr_connector import _derive_duration
+        end = datetime(2024, 1, 31, tzinfo=timezone.utc)
+        start = end - timedelta(days=days_back)
+        return _derive_duration(start, end, freq)
+
+    def test_short_range_returns_days(self) -> None:
+        result = self._derive(days_back=7)
+        assert result.endswith(" D")
+        assert int(result.split()[0]) >= 7
+
+    def test_medium_range_returns_months(self) -> None:
+        result = self._derive(days_back=60)
+        assert result.endswith(" M")
+
+    def test_long_range_returns_years(self) -> None:
+        result = self._derive(days_back=400)
+        assert result.endswith(" Y")
+        assert int(result.split()[0]) >= 1
+
+    def test_single_day_range_minimum_one_day(self) -> None:
+        result = self._derive(days_back=1)
+        assert result.endswith(" D")
+        assert int(result.split()[0]) >= 1
+
+    def test_buffer_applied(self) -> None:
+        # 10 days back should produce >= 11 days (10% buffer)
+        result = self._derive(days_back=10)
+        assert result.endswith(" D")
+        assert int(result.split()[0]) >= 11
+
+    def test_exactly_28_days_stays_in_days(self) -> None:
+        result = self._derive(days_back=25)  # 25 * 1.1 = 27.5 → 28 D
+        assert result.endswith(" D")
+
+    def test_naive_datetimes_handled(self) -> None:
+        from quant_trading.data.apis.ibkr_connector import _derive_duration
+        # Should not raise even without tzinfo
+        start = datetime(2024, 1, 1)
+        end = datetime(2024, 6, 1)
+        result = _derive_duration(start, end, "1d")
+        assert result.endswith(" M") or result.endswith(" D")
+
+
+class TestIBKRConnectorMocked:
+    """IBKRConnector.fetch_price_history with a fully mocked IB instance."""
+
+    def _make_mock_ib(self, num_bars: int = 5):
+        """Return a mock IB instance that returns synthetic bar data."""
+        from unittest.mock import MagicMock
+        import pandas as pd
+
+        # Build synthetic bars as simple objects with the attributes ib_async returns
+        bars = []
+        for i in range(num_bars):
+            bar = MagicMock()
+            bar.date = pd.Timestamp(f"2024-01-{i + 1:02d}", tz="UTC")
+            bar.open = 150.0 + i
+            bar.high = 155.0 + i
+            bar.low  = 148.0 + i
+            bar.close = 152.0 + i
+            bar.volume = 1_000_000 + i * 1000
+            bars.append(bar)
+
+        mock_ib = MagicMock()
+        mock_ib.qualifyContracts.return_value = [MagicMock()]  # non-empty = success
+        mock_ib.reqHistoricalData.return_value = bars
+
+        # util.df converts the bars list to a proper DataFrame
+        import pandas as pd
+
+        def fake_util_df(bar_list):
+            return pd.DataFrame(
+                {
+                    "date":   [b.date for b in bar_list],
+                    "open":   [b.open for b in bar_list],
+                    "high":   [b.high for b in bar_list],
+                    "low":    [b.low  for b in bar_list],
+                    "close":  [b.close for b in bar_list],
+                    "volume": [b.volume for b in bar_list],
+                }
+            )
+
+        return mock_ib, fake_util_df
+
+    def test_returns_ohlcv_dataframe(self) -> None:
+        from quant_trading.data.apis.ibkr_connector import IBKRConnector
+
+        mock_ib, fake_util_df = self._make_mock_ib(5)
+        connector = IBKRConnector(ib=mock_ib)
+
+        with patch("ib_async.Stock"), \
+             patch("ib_async.util") as mock_util:
+            mock_util.df.side_effect = fake_util_df
+            df = connector.fetch_price_history("AAPL", freq="1d")
+
+        assert list(df.columns) == ["open", "high", "low", "close", "volume"]
+        assert len(df) == 5
+        assert df.index.tzinfo is not None
+
+    def test_unsupported_freq_raises_value_error(self) -> None:
+        from quant_trading.data.apis.ibkr_connector import IBKRConnector
+
+        mock_ib, _ = self._make_mock_ib()
+        connector = IBKRConnector(ib=mock_ib)
+
+        with pytest.raises(ValueError, match="Unsupported freq"):
+            connector.fetch_price_history("AAPL", freq="2d")
+
+    def test_qualify_failure_raises_runtime_error(self) -> None:
+        from quant_trading.data.apis.ibkr_connector import IBKRConnector
+
+        mock_ib, _ = self._make_mock_ib()
+        mock_ib.qualifyContracts.return_value = []  # empty = qualification failed
+
+        connector = IBKRConnector(ib=mock_ib)
+
+        with patch("ib_async.Stock"), \
+             patch("ib_async.util"):
+            with pytest.raises(RuntimeError, match="could not qualify"):
+                connector.fetch_price_history("INVALID", freq="1d")
+
+    def test_empty_bars_raises_runtime_error(self) -> None:
+        from quant_trading.data.apis.ibkr_connector import IBKRConnector
+
+        mock_ib, _ = self._make_mock_ib()
+        mock_ib.reqHistoricalData.return_value = []  # IB returned nothing
+
+        connector = IBKRConnector(ib=mock_ib)
+
+        with patch("ib_async.Stock"), \
+             patch("ib_async.util"):
+            with pytest.raises(RuntimeError, match="no data"):
+                connector.fetch_price_history("AAPL", freq="1d")
+
+    def test_start_date_trims_result(self) -> None:
+        from quant_trading.data.apis.ibkr_connector import IBKRConnector
+
+        mock_ib, fake_util_df = self._make_mock_ib(10)
+        connector = IBKRConnector(ib=mock_ib)
+
+        start = datetime(2024, 1, 5, tzinfo=timezone.utc)
+
+        with patch("ib_async.Stock"), \
+             patch("ib_async.util") as mock_util:
+            mock_util.df.side_effect = fake_util_df
+            df = connector.fetch_price_history("AAPL", freq="1d", start=start)
+
+        assert df.index.min() >= start
+
+    def test_default_duration_used_when_no_start(self) -> None:
+        from quant_trading.data.apis.ibkr_connector import IBKRConnector, _IB_DEFAULT_DURATION
+
+        mock_ib, fake_util_df = self._make_mock_ib(3)
+        connector = IBKRConnector(ib=mock_ib)
+
+        with patch("ib_async.Stock"), \
+             patch("ib_async.util") as mock_util:
+            mock_util.df.side_effect = fake_util_df
+            connector.fetch_price_history("AAPL", freq="1d")
+
+        _, kwargs = mock_ib.reqHistoricalData.call_args
+        assert kwargs["durationStr"] == _IB_DEFAULT_DURATION["1d"]
+
+    def test_fetch_fundamentals_raises_not_implemented(self) -> None:
+        from quant_trading.data.apis.ibkr_connector import IBKRConnector
+
+        connector = IBKRConnector(ib=MagicMock())
+        with pytest.raises(NotImplementedError):
+            connector.fetch_fundamentals("AAPL")

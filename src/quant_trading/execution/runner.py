@@ -5,7 +5,7 @@ Multiple runners can share one IBKRAdapter (and therefore one IB() instance).
 
 Design principles:
 - One runner per strategy (isolated failure domains, independent intervals)
-- Sync API — ib_insync's event loop is managed internally
+- Sync API — ib_async's event loop is managed internally
 - Graceful shutdown via stop() or KeyboardInterrupt
 - DRY_RUN safety is enforced by SafetyChecker inside OrderManager
 
@@ -74,7 +74,7 @@ class StrategyRunner:
 
     Example:
         # In private repo:
-        from ib_insync import IB
+        from ib_async import IB
         from quant_trading.execution.ibkr_adapter import IBKRAdapter
         from quant_trading.data.apis.ibkr_connector import IBKRConnector
         from quant_trading.execution.runner import StrategyRunner

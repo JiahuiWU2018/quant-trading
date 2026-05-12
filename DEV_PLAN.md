@@ -10,7 +10,7 @@
 - This is a **public** repository. It contains only **generic, reusable infrastructure**.
 - All strategy signals, parameters, model weights, and account configuration live in a **separate private repository** that imports this package.
 - Backtrader is used for **backtesting only**.
-- `ib_insync` is used directly for **live and paper execution** (no Backtrader IBStore).
+- `ib_async` is used directly for **live and paper execution** (no Backtrader IBStore).
 - CVXPY is the primary optimization interface; solver chain: OSQP → ECOS → SCS → MOSEK (optional).
 - All credentials and sensitive values are read from environment variables. Nothing sensitive is ever committed.
 
@@ -22,7 +22,7 @@
 Backtesting:   Strategy (Backtrader) ← BacktestAdapter ← BrokerAdapter ABC
 Live/Paper:    Strategy              ← IBKRAdapter     ← BrokerAdapter ABC
                                            ↕
-                                       ib_insync
+                                       ib_async
                                            ↕
                                     IB Gateway / TWS
 ```
@@ -145,7 +145,7 @@ class BaseStrategy(bt.Strategy, ABC):
 
 ## Phase 3 — Paper Trading Integration (IBKR)
 
-**Goal:** Connect to IB Gateway/TWS for paper trading via `ib_insync`.
+**Goal:** Connect to IB Gateway/TWS for paper trading via `ib_async`.
 
 ### Safety requirements (non-negotiable)
 
@@ -160,12 +160,12 @@ class BaseStrategy(bt.Strategy, ABC):
 ```
 src/quant_trading/execution/
   base_adapter.py            # BrokerAdapter ABC
-  ibkr_adapter.py            # ib_insync implementation
+  ibkr_adapter.py            # ib_async implementation
   backtest_adapter.py        # Backtrader-backed simulation adapter
   order_manager.py           # order lifecycle, retry, rate limiting
   safety.py                  # kill switch, position limits, dry-run, pre-trade checks
 src/quant_trading/data/apis/
-  ibkr_connector.py          # historical + live market data via ib_insync
+  ibkr_connector.py          # historical + live market data via ib_async
 .env.example                 # updated with IB vars
 tests/test_execution.py      # dry-run / mock tests only; no real IB connection in CI
 ```
@@ -188,7 +188,7 @@ class BrokerAdapter(ABC):
 
 - [ ] `IBKRAdapter` connects to IB Gateway in dry-run mode and logs orders without submitting
 - [ ] Pre-trade safety checks reject orders exceeding position limits
-- [ ] `IBKRConnector` fetches historical bars via `ib_insync`
+- [ ] `IBKRConnector` fetches historical bars via `ib_async`
 - [ ] Manual smoke test passes against IB paper account
 
 ---
@@ -275,7 +275,7 @@ tests/test_risk_metrics.py   # extended
 
 - `pyproject.toml` with package metadata and optional extras:
   - `pip install quant-trading` — core (yfinance, cvxpy, backtrader)
-  - `pip install quant-trading[ibkr]` — adds `ib_insync`
+  - `pip install quant-trading[ibkr]` — adds `ib_async`
   - `pip install quant-trading[mosek]` — adds `mosek`
 - GitHub Actions CI: black, flake8, pytest on Python 3.10 + 3.11
 - Additional data connectors (Alpha Vantage, Finnhub) — added here, not earlier
